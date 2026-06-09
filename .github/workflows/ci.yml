@@ -135,3 +135,58 @@ jobs:
           curl -fsS -o /dev/null -w "pulsar /       -> %{http_code}\n" http://localhost:8081/
           curl -fsS http://localhost:8081/health | grep -q '"ok":true' && echo "pulsar health OK"
           docker rm -f pulsar
+
+  # ---------------------------------------------------------------------------
+  # Auto-deploy to the home server. Runs ONLY on a push to `main`, and ONLY
+  # after every test/build job above has passed. It is pull-based: it SSHes in,
+  # syncs the checkout to origin/main, and runs `docker compose up -d --build`
+  # (the external proxy keeps routing the vhosts). Until the DEPLOY_* secrets
+  # are configured it is a green no-op that just prints a warning — see README.
+  deploy:
+    name: Deploy · home server
+    needs: [flotsam, pulsar, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: deploy-home-server
+      cancel-in-progress: false
+    steps:
+      - name: Is deploy configured?
+        id: cfg
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::warning::DEPLOY_HOST secret not set — skipping autodeploy. Add the DEPLOY_* secrets to enable it (see README)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.cfg.outputs.ok == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PORT="${DEPLOY_PORT:-22}"
+          DEST="${DEPLOY_PATH:-/opt/3D-Games}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -e; \
+             if [ ! -d '$DEST/.git' ]; then git clone https://github.com/$REPO.git '$DEST'; fi; \
+             cd '$DEST'; \
+             if [ ! -f .env ]; then echo 'ERROR: .env missing on server — run: cp .env.example .env then set LETSENCRYPT_EMAIL + *_VHOST'; exit 1; fi; \
+             git fetch --all --quiet; \
+             git reset --hard origin/main; \
+             docker compose up -d --build; \
+             docker image prune -f"
+          echo "✅ Deployed $REPO@main to $DEPLOY_HOST"
