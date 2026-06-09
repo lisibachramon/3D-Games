@@ -1,0 +1,25 @@
+{
+  "name": "flotsam",
+  "version": "1.0.0",
+  "description": "FLOTSAM — a 3D co-op ocean survival game. Build a raft, fight the shark, call for rescue.",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js",
+    "check": "node --check server/server.js",
+    "test": "node test/integration.mjs",
+    "test:browser": "node test/browser.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "three": "^0.160.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "puppeteer": "^23.11.1"
+  }
+}

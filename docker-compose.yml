@@ -1,0 +1,92 @@
+name: 3d-games
+
+# Multi-game host. Mirrors the jarvis/kitchen compose: the EXTERNAL
+# jwilder/nginx-proxy + acme/letsencrypt-companion (already running on this host)
+# route each game's vhost to its container over the shared `proxy_default`
+# network. This stack does NOT run its own proxy.
+#
+# One game == one service. To add another game later: drop its folder next to
+# `flotsam/` (with its own Dockerfile), copy the service block below, point
+# `build:` at the new folder, and give it its own *_VHOST. Done.
+#
+# One-time on the server:
+#   - DNS A record for each ${*_VHOST} -> this host
+#   - the main proxy stack's `proxy_default` network is up
+#   - repo checked out at the deploy dir; .env written from .env.example
+#
+# Local dev without the proxy:
+#   docker compose up --build      # then hit http://localhost:8080
+
+services:
+  # ---- FLOTSAM: 3D co-op ocean survival (Node + WebSocket, vendored Three.js) ----
+  flotsam:
+    image: flotsam:local
+    build: ./flotsam
+    restart: unless-stopped
+    environment:
+      # nginx-proxy routes ${FLOTSAM_VHOST} -> this container's :8080.
+      VIRTUAL_HOST: ${FLOTSAM_VHOST:-flotsam.lisibach.xyz}
+      LETSENCRYPT_HOST: ${FLOTSAM_VHOST:-flotsam.lisibach.xyz}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL}
+      VIRTUAL_PORT: "8080"
+      PORT: "8080"
+    # Matches the reference's PUID/PGID pattern (defaults to root).
+    user: "${PUID:-0}:${PGID:-0}"
+    volumes:
+      - flotsam-saves:/app/data          # world save persists across deploys
+    networks: [proxy_default]
+    # Local-dev convenience: expose 8080 on the host. Harmless in prod (the
+    # proxy reaches it over proxy_default, not this published port).
+    ports:
+      - "${FLOTSAM_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 15s
+      timeout: 4s
+      retries: 5
+      start_period: 8s
+
+  # ---- PULSAR: 3D neon multiplayer knockout arena (Node + WebSocket, vendored Three.js) ----
+  pulsar:
+    image: pulsar:local
+    build: ./pulsar
+    restart: unless-stopped
+    environment:
+      # nginx-proxy routes ${PULSAR_VHOST} -> this container's :8080.
+      VIRTUAL_HOST: ${PULSAR_VHOST:-pulsar.lisibach.xyz}
+      LETSENCRYPT_HOST: ${PULSAR_VHOST:-pulsar.lisibach.xyz}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL}
+      VIRTUAL_PORT: "8080"
+      PORT: "8080"
+    user: "${PUID:-0}:${PGID:-0}"
+    # PULSAR is a transient arena (no world to persist), so it needs no volume.
+    networks: [proxy_default]
+    # Local-dev convenience: publish on a different host port than flotsam.
+    ports:
+      - "${PULSAR_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 15s
+      timeout: 4s
+      retries: 5
+      start_period: 8s
+
+  # ---- next game goes here -------------------------------------------------
+  # mygame:
+  #   image: mygame:local
+  #   build: ./mygame
+  #   restart: unless-stopped
+  #   environment:
+  #     VIRTUAL_HOST: ${MYGAME_VHOST:-mygame.lisibach.xyz}
+  #     LETSENCRYPT_HOST: ${MYGAME_VHOST:-mygame.lisibach.xyz}
+  #     LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL}
+  #     VIRTUAL_PORT: "8080"
+  #   networks: [proxy_default]
+
+volumes:
+  flotsam-saves:
+
+networks:
+  # Provided by the external jwilder/nginx-proxy + acme companion stack.
+  proxy_default:
+    external: true

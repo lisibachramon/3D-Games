@@ -1,0 +1,137 @@
+name: CI
+
+# Builds and tests every game in the monorepo. Each game is independent, so
+# jobs run in parallel. The docker job mirrors a real deploy: it validates the
+# compose file, builds each image, asserts dev-only deps stay out of the
+# production image, and smoke-runs each container exactly like the proxy would.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  flotsam:
+    name: FLOTSAM · tests
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: flotsam
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: flotsam/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Headless Chromium (for the browser test) needs these shared libraries.
+      - name: Install Chromium system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libpango-1.0-0 libcairo2 libasound2 fonts-liberation
+
+      - name: Integration test (drives the authoritative WS server)
+        run: |
+          PORT=8091 FLOTSAM_NOSAVE=1 node server/server.js & SRV=$!
+          for i in $(seq 1 60); do nc -z 127.0.0.1 8091 && break; sleep 0.5; done
+          PORT=8091 npm test
+          kill $SRV 2>/dev/null || true
+
+      - name: Browser smoke test (WebGL renders, world initialises)
+        run: |
+          # The browser test writes its screenshot to this absolute path.
+          sudo mkdir -p /home/user/flotsam && sudo chmod 0777 /home/user/flotsam
+          PORT=8092 FLOTSAM_NOSAVE=1 node server/server.js & SRV=$!
+          for i in $(seq 1 60); do nc -z 127.0.0.1 8092 && break; sleep 0.5; done
+          PORT=8092 npm run test:browser
+          kill $SRV 2>/dev/null || true
+
+      - name: Upload render screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flotsam-screenshot
+          path: /home/user/flotsam/screenshot.png
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  pulsar:
+    name: PULSAR · smoke
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: pulsar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: pulsar/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Server boots and serves the client
+        run: |
+          PORT=8093 node server/server.js & SRV=$!
+          for i in $(seq 1 60); do nc -z 127.0.0.1 8093 && break; sleep 0.5; done
+          curl -fsS -o /dev/null -w "GET /        -> %{http_code}\n" http://localhost:8093/
+          curl -fsS -o /dev/null -w "GET three.js -> %{http_code}\n" http://localhost:8093/js/three.module.js
+          curl -fsS -o /dev/null -w "GET shared    -> %{http_code}\n" http://localhost:8093/shared/constants.js
+          curl -fsS http://localhost:8093/health | grep -q '"ok":true' && echo "health OK"
+          kill $SRV 2>/dev/null || true
+
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker · build + deploy smoke
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: LETSENCRYPT_EMAIL=ci@example.com docker compose config
+
+      # ---- FLOTSAM image ----
+      - name: Build flotsam image
+        run: docker build -t flotsam:ci ./flotsam
+
+      - name: Production image must exclude dev-only deps (puppeteer)
+        run: |
+          if docker run --rm flotsam:ci sh -c '[ -d node_modules/puppeteer ]'; then
+            echo "::error::puppeteer (devDependency) leaked into the flotsam production image"; exit 1
+          fi
+          docker run --rm flotsam:ci sh -c '[ -d node_modules/ws ] && [ -d node_modules/express ]' \
+            && echo "OK: runtime deps present, puppeteer absent"
+
+      - name: Smoke-run flotsam container
+        run: |
+          docker run -d --name flotsam -e PORT=8080 -e FLOTSAM_NOSAVE=1 -p 8080:8080 flotsam:ci
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:8080/ && break; sleep 1; done
+          curl -fsS -o /dev/null -w "flotsam / -> %{http_code}\n" http://localhost:8080/
+          docker rm -f flotsam
+
+      # ---- PULSAR image ----
+      - name: Build pulsar image
+        run: docker build -t pulsar:ci ./pulsar
+
+      - name: Smoke-run pulsar container
+        run: |
+          docker run -d --name pulsar -e PORT=8080 -p 8081:8080 pulsar:ci
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:8081/ && break; sleep 1; done
+          curl -fsS -o /dev/null -w "pulsar /       -> %{http_code}\n" http://localhost:8081/
+          curl -fsS http://localhost:8081/health | grep -q '"ok":true' && echo "pulsar health OK"
+          docker rm -f pulsar

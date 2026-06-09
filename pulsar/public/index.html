@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PULSAR — Neon Knockout Arena</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%2300f0ff'/></svg>" />
+  <!-- Three.js is vendored locally (vendor/, copied to /js) so the game runs
+       fully offline. The importmap lets modules `import ... from "three"`. -->
+  <script type="importmap">
+    { "imports": { "three": "/js/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- ===== Lobby ===== -->
+  <div id="lobby" class="overlay">
+    <div class="panel">
+      <h1 class="logo">PULSAR</h1>
+      <p class="tag">NEON KNOCKOUT ARENA</p>
+      <p class="blurb">Dash into rivals to launch them off the platform — or unleash
+        a <b style="color:#ff2bd6">shockwave</b> to scatter the pack. Last orb in the
+        light wins. Every round rolls a new <b style="color:#ffd000">mutator</b>. The
+        void is always closing in.</p>
+
+      <label class="field">
+        <span>CALL SIGN</span>
+        <input id="name" maxlength="14" placeholder="enter your name" autocomplete="off" />
+      </label>
+
+      <div class="field">
+        <span>ORB COLOR</span>
+        <div id="swatches" class="swatches"></div>
+      </div>
+
+      <button id="play" class="btn-play">ENTER THE ARENA</button>
+
+      <div id="profileBanner" class="profile-banner"></div>
+
+      <div class="controls">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
+        <div><kbd>Space</kbd> / <kbd>Click</kbd> dash</div>
+        <div><kbd>Shift</kbd> / <kbd>R-Click</kbd> shockwave</div>
+        <div><kbd>1–6</kbd> emote · <kbd>H</kbd> help · <kbd>M</kbd> mute · <kbd>F</kbd> full</div>
+      </div>
+      <p class="hint">Playing solo? Bots fill the arena. Share your LAN IP for friends. 📱 Touch supported.</p>
+    </div>
+  </div>
+
+  <div id="flash"></div>
+  <div id="vignette"></div>
+
+  <!-- ===== Help overlay (toggle with H) ===== -->
+  <div id="help" class="overlay hidden">
+    <div class="panel">
+      <h2 style="letter-spacing:4px;color:#00f0ff;margin-bottom:14px">HOW TO PLAY</h2>
+      <div class="help-grid">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><div>Move (camera-relative)</div>
+        <div><kbd>Space</kbd> / <kbd>L-Click</kbd></div><div>Dash — knock rivals off</div>
+        <div><kbd>Shift</kbd> / <kbd>R-Click</kbd></div><div>Shockwave — radial blast</div>
+        <div><kbd>Mouse</kbd></div><div>Aim your dash</div>
+        <div><kbd>1</kbd>–<kbd>6</kbd></div><div>Emotes</div>
+        <div><kbd>M</kbd> / <kbd>F</kbd> / <kbd>H</kbd></div><div>Mute / Fullscreen / Help</div>
+        <div><kbd>⚙</kbd></div><div>Settings (top-left)</div>
+      </div>
+      <p class="blurb">Grab power-ups, survive the shrinking void, win the round. Each
+        round rolls a wild mutator. Chain KOs for combos. Last orb standing wins!</p>
+      <button class="btn-play" onclick="document.getElementById('help').classList.add('hidden')">GOT IT</button>
+    </div>
+  </div>
+
+  <!-- ===== In-game HUD ===== -->
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div id="phaseLabel">—</div>
+      <div id="aliveCount"></div>
+      <div id="mutatorTag" class="hidden"></div>
+      <div id="mvp" class="hidden"></div>
+    </div>
+
+    <div id="fps" class="hidden">— FPS</div>
+
+    <div id="scoreboard"></div>
+
+    <div id="dashMeter">
+      <div id="dashFill"></div>
+      <span id="dashText">DASH</span>
+    </div>
+    <div id="blastMeter">
+      <div id="blastFill"></div>
+      <span id="blastText">SHOCKWAVE</span>
+    </div>
+
+    <div id="buffStrip"></div>
+
+    <div id="bigMsg" class="hidden"></div>
+    <div id="killfeed"></div>
+
+    <div id="netInfo"></div>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

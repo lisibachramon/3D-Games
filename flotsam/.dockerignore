@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log*
+test
+screenshot.png
+data
+.git
+.gitignore
+Dockerfile
+.dockerignore

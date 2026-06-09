@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FLOTSAM — co-op ocean survival</title>
+<link rel="stylesheet" href="./css/styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌊</text></svg>" />
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+  <!-- ====== START / LOGIN ====== -->
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>🌊 FLOTSAM</h1>
+      <p class="tag">Stranded. Together. Build a raft from the wreckage of the sea,
+         fend off the shark, and call for rescue — before the ocean takes you.</p>
+      <input id="nameInput" maxlength="16" placeholder="Your name" autocomplete="off" />
+      <button id="playBtn">SET SAIL ⛵</button>
+      <div class="how">
+        <b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump/swim up · <b>Ctrl</b> dive ·
+        <b>Mouse</b> look · <b>Click</b> use tool · <b>E</b> interact · <b>1-9</b> tools ·
+        <b>B</b> build · <b>C</b> craft · <b>F</b> eat · <b>G</b> drink · <b>V</b> emote · <b>Mid-click</b> ping · <b>T</b> chat
+      </div>
+      <div class="goalline">🎯 Goal: gather <b>Metal</b> + <b>Circuits</b> → craft a <b>Beacon Core</b> → build &amp; activate the <b>Rescue Beacon</b> → survive the final hunt.</div>
+    </div>
+  </div>
+
+  <!-- ====== GAME CANVAS ====== -->
+  <div id="game" class="hidden">
+    <div id="crosshair">+</div>
+    <div id="hint" class="hint"></div>
+
+    <!-- vitals -->
+    <div id="vitals">
+      <div class="bar"><span class="ico">❤️</span><div class="track"><div id="hpFill" class="fill hp"></div></div></div>
+      <div class="bar"><span class="ico">🍖</span><div class="track"><div id="hungerFill" class="fill hunger"></div></div></div>
+      <div class="bar"><span class="ico">💧</span><div class="track"><div id="thirstFill" class="fill thirst"></div></div></div>
+      <div class="bar sec" id="oxyBar"><span class="ico">🫧</span><div class="track sm"><div id="oxyFill" class="fill oxy"></div></div></div>
+      <div class="bar sec"><span class="ico">⚡</span><div class="track sm"><div id="staFill" class="fill sta"></div></div></div>
+      <div class="bar sec" id="tempBar"><span class="ico">🌡️</span><div class="track sm"><div id="tempFill" class="fill temp"></div></div></div>
+    </div>
+
+    <!-- topbar: clock / day / players / weather -->
+    <div id="topbar">
+      <span id="clock">☀️ Day 1</span>
+      <span id="weather">☀️ Clear</span>
+      <span id="players">👥 1</span>
+      <span id="sharkbar" class="hidden"><span id="sharkName">🦈</span> <div class="track sm"><div id="sharkFill" class="fill shark"></div></div></span>
+    </div>
+
+    <!-- minimap + compass -->
+    <div id="mapwrap">
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="compass">N</div>
+    </div>
+    <!-- crew list -->
+    <div id="crewlist"></div>
+    <!-- objective tracker -->
+    <div id="objective"></div>
+    <!-- gear button -->
+    <div id="gearBtn" title="Settings">⚙️</div>
+    <!-- emote bar -->
+    <div id="emotebar" class="hidden"></div>
+    <!-- underwater tint -->
+    <div id="underwater"></div>
+
+    <!-- settings panel -->
+    <div id="settingsPanel" class="sidepanel hidden">
+      <div class="ph"><h2>⚙️ Settings</h2><span class="x" data-close>✕</span></div>
+      <div id="settingsBody"></div>
+    </div>
+
+    <div id="endgame" class="hidden"></div>
+
+    <!-- hotbar -->
+    <div id="hotbar"></div>
+
+    <!-- toasts -->
+    <div id="toasts"></div>
+
+    <!-- chat -->
+    <div id="chatlog"></div>
+    <input id="chatInput" class="hidden" maxlength="140" placeholder="say something… (Enter to send, Esc to cancel)" />
+
+    <!-- build palette -->
+    <div id="buildbar" class="hidden"></div>
+
+    <!-- crafting / inventory panel -->
+    <div id="craftPanel" class="sidepanel hidden">
+      <div class="ph"><h2>🛠️ Craft &amp; Inventory</h2><span class="x" data-close>✕</span></div>
+      <div class="cols">
+        <div><h3>Craft</h3><div id="recipeList"></div></div>
+        <div><h3>Inventory</h3><div id="invList"></div></div>
+      </div>
+    </div>
+
+    <!-- storage panel -->
+    <div id="storagePanel" class="sidepanel hidden">
+      <div class="ph"><h2>📦 Crew Storage</h2><span class="x" data-close>✕</span></div>
+      <button id="depositAll" class="wbtn">Deposit all resources ⤓</button>
+      <div class="cols">
+        <div><h3>Your inventory</h3><div id="stInv"></div></div>
+        <div><h3>Storage</h3><div id="stStore"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- death / victory veil -->
+  <div id="veil" class="overlay hidden">
+    <div class="panel" id="veilPanel"></div>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
