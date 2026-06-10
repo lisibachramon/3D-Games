@@ -68,6 +68,25 @@ PORT=8092 FLOTSAM_NOSAVE=1 npm start &   # browser test connects to :8092
 npm run test:browser
 ```
 
+## Desktop builds (Mac + Windows, Steam-ready)
+
+[`desktop/`](desktop/) wraps each game in an Electron shell so it ships as a
+native app: **Play Online** loads the live server (desktop players share the
+arena with browser players), **Host Local/LAN** spawns the bundled game server
+for offline/LAN play. Windows targets are `nsis` + `portable`; macOS builds
+`dmg` + `zip`.
+
+```bash
+cd desktop && npm install
+npm run smoke:pulsar      # boots the packaged local mode, prints SMOKE OK
+npm run dist:pulsar       # build installers for this OS (also: *:flotsam)
+```
+
+[`release.yml`](.github/workflows/release.yml) builds installers for
+**macOS + Windows × both games** on every `v*` tag (or manual dispatch) and
+attaches them to a GitHub Release. The path to Steam (Steamworks setup, depots,
+`steamcmd`) is documented in [`desktop/STEAM.md`](desktop/STEAM.md).
+
 ## Auto-deploy (home server)
 
 On every push to `main`, once all test/build jobs pass, the `deploy` job in

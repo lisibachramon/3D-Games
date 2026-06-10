@@ -1,0 +1,26 @@
+{
+  "name": "desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Electron desktop shell for FLOTSAM and PULSAR (one codebase, parameterized per game)",
+  "main": "main.js",
+  "author": "Ramon Lisibach",
+  "license": "MIT",
+  "scripts": {
+    "start:flotsam": "electron . --game=flotsam",
+    "start:pulsar": "electron . --game=pulsar",
+    "smoke:flotsam": "electron . --game=flotsam --smoke",
+    "smoke:pulsar": "electron . --game=pulsar --smoke",
+    "icons": "node scripts/make-icons.js",
+    "stage": "node scripts/stage-game.js",
+    "pack": "node scripts/build.js flotsam --dir",
+    "pack:flotsam": "node scripts/build.js flotsam --dir",
+    "pack:pulsar": "node scripts/build.js pulsar --dir",
+    "dist:flotsam": "node scripts/build.js flotsam",
+    "dist:pulsar": "node scripts/build.js pulsar"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  }
+}

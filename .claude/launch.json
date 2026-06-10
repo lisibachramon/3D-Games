@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flotsam",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js"],
+      "cwd": "flotsam",
+      "env": { "PORT": "8080", "FLOTSAM_NOSAVE": "1" },
+      "port": 8080
+    },
+    {
+      "name": "pulsar",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js"],
+      "cwd": "pulsar",
+      "env": { "PORT": "8081" },
+      "port": 8081
+    }
+  ]
+}
