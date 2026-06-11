@@ -35,24 +35,23 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" '
-            set -e
+            set -ex
             PATCH_B64="CiMgLS0tIFdlYlNvY2tldCB1cGdyYWRlIHN1cHBvcnQgKHJlc3RvcmVzIG5naW54LXByb3h5IHRlbXBsYXRlIGRlZmF1bHRzCiMgICAgIHRoYXQgYSBjdXN0b20gcHJveHkuY29uZiBvdGhlcndpc2UgcmVwbGFjZXMpIC0tLQpwcm94eV9odHRwX3ZlcnNpb24gMS4xOwpwcm94eV9zZXRfaGVhZGVyIFVwZ3JhZGUgJGh0dHBfdXBncmFkZTsKcHJveHlfc2V0X2hlYWRlciBDb25uZWN0aW9uICRwcm94eV9jb25uZWN0aW9uOwo="
             PROXY=$(docker ps --format "{{.Names}} {{.Image}}" | grep -Ei "jwilder/nginx-proxy|nginxproxy/nginx-proxy" | grep -vi companion | head -1 | cut -d" " -f1)
-            echo "proxy container: $PROXY"
-            echo "--- mount info for proxy.conf ---"
-            docker inspect "$PROXY" --format "{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}" | grep -i proxy.conf || echo "(not a bind mount — patch lives only in the container layer)"
-            echo "--- current proxy.conf ---"
-            docker exec "$PROXY" cat /etc/nginx/proxy.conf || { echo "no custom proxy.conf — different root cause, aborting"; exit 1; }
-            if docker exec "$PROXY" grep -q "proxy_set_header Upgrade" /etc/nginx/proxy.conf; then
+            CONF=$(docker inspect "$PROXY" --format "{{range .Mounts}}{{if eq .Destination \"/etc/nginx/proxy.conf\"}}{{.Source}}{{end}}{{end}}")
+            echo "proxy container: $PROXY ; host conf: $CONF"
+            test -n "$CONF" && test -w "$CONF"
+            cat "$CONF"
+            if grep -q "proxy_set_header Upgrade" "$CONF"; then
               echo "ALREADY PATCHED — nothing to do"
             else
-              docker exec "$PROXY" cp /etc/nginx/proxy.conf /etc/nginx/proxy.conf.bak
-              echo "$PATCH_B64" | base64 -d | docker exec -i "$PROXY" sh -c "cat >> /etc/nginx/proxy.conf"
+              cp "$CONF" "$CONF.bak"
+              echo "$PATCH_B64" | base64 -d >> "$CONF"
               if docker exec "$PROXY" nginx -t; then
                 docker exec "$PROXY" nginx -s reload
                 echo "PATCHED + RELOADED"
               else
-                docker exec "$PROXY" cp /etc/nginx/proxy.conf.bak /etc/nginx/proxy.conf
+                cp "$CONF.bak" "$CONF"
                 echo "nginx -t FAILED — restored backup"
                 exit 1
               fi
