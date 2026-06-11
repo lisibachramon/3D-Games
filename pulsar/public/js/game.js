@@ -47,7 +47,7 @@ export class Game {
     this._wireNet();
   }
 
-  start(name, color) {
+  start(name, color, room) {
     this.audio.init();
     this.music = new Music(this.audio.ctx, this.audio.musicGain);
     this.music.start();
@@ -66,7 +66,7 @@ export class Game {
       else if (/^Digit[1-6]$/.test(e.code)) { this._emote(+e.code.slice(5) - 1); }
     });
     this.net.connect();
-    this.net.join(name, color);
+    this.net.join(name, color, room);
     this.hud.show();
     let prev = performance.now();
     const loop = (now) => {
@@ -100,7 +100,10 @@ export class Game {
   }
 
   _wireNet() {
-    this.net.on('welcome', (m) => { this.selfId = m.id; this.scene.selfId = m.id; });
+    this.net.on('welcome', (m) => {
+      this.selfId = m.id; this.scene.selfId = m.id;
+      this.room = m.room && m.room !== 'PUBLIC' ? m.room : null;
+    });
     this.net.on('state', (m) => {
       this.latest = m;
       this.snapshots.push({ time: performance.now() / 1000, state: m });
@@ -288,7 +291,7 @@ export class Game {
         const c = Math.ceil(state.pt);
         if (c !== this._lastCount && c > 0) { this.audio.beep(); this._lastCount = c; }
       } else this._lastCount = -1;
-      this.hud.net(this.net.ping, state.players.filter((p) => p.a).length + '/' + state.players.length);
+      this.hud.net(this.net.ping, state.players.filter((p) => p.a).length + '/' + state.players.length, this.room);
     }
 
     // FPS counter.

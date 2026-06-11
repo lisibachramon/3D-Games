@@ -44,11 +44,17 @@ function resolveFile(urlPath) {
 
 const server = http.createServer((req, res) => {
   // Lightweight health/status endpoint (handy for deploys & uptime checks).
+  // Aggregates across rooms; the public room's state is reported for back-compat.
   if (req.url === '/health') {
+    const pub = rooms.get(PUBLIC_ROOM);
+    let players = 0;
+    for (const r of rooms.values()) players += r.sockets.size;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
-      ok: true, players: sockets.size, tick: game.tick,
-      phase: game.phase, mutator: game.mutator ? game.mutator.id : null,
+      ok: true, players, rooms: rooms.size,
+      tick: pub ? pub.game.tick : 0,
+      phase: pub ? pub.game.phase : 'idle',
+      mutator: pub && pub.game.mutator ? pub.game.mutator.id : null,
       uptime: Math.round(process.uptime()),
     }));
   }
@@ -63,24 +69,52 @@ const server = http.createServer((req, res) => {
 });
 
 // ---- realtime layer --------------------------------------------------------
+//
+// Rooms: every arena is an independent Game instance keyed by a short code.
+// The default PUBLIC room is the drop-in party arena; private rooms are
+// created on demand when someone joins with an invite code (?room=XYZ12) and
+// are torn down when the last human leaves. Bots fill every room the same way.
 
 const wss = new WebSocketServer({ server });
-const sockets = new Map(); // playerId -> ws
+
+const PUBLIC_ROOM = 'PUBLIC';
+const MAX_ROOMS = Math.max(4, +(process.env.MAX_ROOMS || 64));
+const rooms = new Map(); // code -> { code, game, sockets: Map<playerId, ws> }
+
+// Invite codes: 4-8 chars, A-Z + digits (client generates unambiguous ones).
+function normalizeRoom(code) {
+  const c = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  return c.length >= 4 ? c : PUBLIC_ROOM;
+}
+
+function getRoom(code) {
+  let room = rooms.get(code);
+  if (room) return room;
+  if (rooms.size >= MAX_ROOMS) return rooms.get(PUBLIC_ROOM) || makeRoom(PUBLIC_ROOM);
+  return makeRoom(code);
+}
+
+function makeRoom(code) {
+  const room = { code, sockets: new Map() };
+  room.game = new Game((type, payload) => {
+    const msg = JSON.stringify({ t: type, ...payload });
+    for (const ws of room.sockets.values()) if (ws.readyState === ws.OPEN) ws.send(msg);
+  });
+  room.game.startRound();
+  rooms.set(code, room);
+  return room;
+}
+
+// The public arena always exists (keeps /health stable and joins instant).
+makeRoom(PUBLIC_ROOM);
 
 function send(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
 }
-function broadcast(obj) {
-  const msg = JSON.stringify(obj);
-  for (const ws of sockets.values()) if (ws.readyState === ws.OPEN) ws.send(msg);
-}
-
-// One shared arena for everyone connected (simple, party-friendly).
-const game = new Game((type, payload) => broadcast({ t: type, ...payload }));
-game.startRound();
 
 wss.on('connection', (ws) => {
   let playerId = null;
+  let room = null;
   let msgWindow = 0, msgCount = 0; // crude per-second message rate limiter
   let lastEmote = 0;
 
@@ -94,13 +128,15 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
-    if (msg.t === 'join') {
-      const p = game.addHuman(msg.name, msg.color);
+    if (msg.t === 'join' && playerId == null) {
+      room = getRoom(normalizeRoom(msg.room));
+      const p = room.game.addHuman(msg.name, msg.color);
       playerId = p.id;
-      sockets.set(playerId, ws);
+      room.sockets.set(playerId, ws);
       send(ws, {
         t: 'welcome',
         id: p.id,
+        room: room.code,
         arena: { radius: C.ARENA_RADIUS, minRadius: C.ARENA_MIN_RADIUS },
         constants: C,
       });
@@ -108,7 +144,7 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.t === 'input' && playerId != null) {
-      game.setInput(playerId, msg);
+      room.game.setInput(playerId, msg);
     }
 
     if (msg.t === 'emote' && playerId != null) {
@@ -116,16 +152,19 @@ wss.on('connection', (ws) => {
       if (now - lastEmote < 700) return; // anti-spam
       lastEmote = now;
       const e = Math.max(0, Math.min(5, msg.e | 0));
-      broadcast({ t: 'event', kind: 'emote', id: playerId, e });
+      const emoteMsg = JSON.stringify({ t: 'event', kind: 'emote', id: playerId, e });
+      for (const s of room.sockets.values()) if (s.readyState === s.OPEN) s.send(emoteMsg);
     }
 
     if (msg.t === 'ping') send(ws, { t: 'pong', s: msg.s });
   });
 
   ws.on('close', () => {
-    if (playerId != null) {
-      game.removeHuman(playerId);
-      sockets.delete(playerId);
+    if (playerId != null && room) {
+      room.game.removeHuman(playerId);
+      room.sockets.delete(playerId);
+      // Private rooms evaporate when the last human leaves.
+      if (room.code !== PUBLIC_ROOM && room.sockets.size === 0) rooms.delete(room.code);
     }
   });
 });
@@ -141,8 +180,15 @@ setInterval(() => {
   last = now;
   // Catch up but never spiral if the host stalls.
   let guard = 0;
-  while (acc >= STEP && guard < 5) { game.step(STEP); acc -= STEP; guard++; }
-  if (sockets.size > 0) broadcast(game.snapshot());
+  let steps = 0;
+  while (acc >= STEP && steps < 5) { steps++; acc -= STEP; }
+  for (const room of rooms.values()) {
+    for (let i = 0; i < steps; i++) room.game.step(STEP);
+    if (room.sockets.size > 0) {
+      const snap = JSON.stringify(room.game.snapshot());
+      for (const ws of room.sockets.values()) if (ws.readyState === ws.OPEN) ws.send(snap);
+    }
+  }
 }, 1000 / C.TICK_RATE);
 
 server.listen(PORT, () => {
@@ -160,7 +206,9 @@ let closing = false;
 function shutdown() {
   if (closing) return; closing = true;
   console.log('\n  PULSAR shutting down…');
-  for (const ws of sockets.values()) { try { ws.close(); } catch {} }
+  for (const room of rooms.values()) {
+    for (const ws of room.sockets.values()) { try { ws.close(); } catch {} }
+  }
   wss.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();

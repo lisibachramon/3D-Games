@@ -134,7 +134,9 @@ export class Hud {
     setTimeout(() => d.remove(), 4500);
   }
 
-  net(ping, players) { this.el.net.textContent = `${ping}ms · ${players} in arena`; }
+  net(ping, players, room) {
+    this.el.net.textContent = `${ping}ms · ${players} in arena` + (room ? ` · room ${room}` : '');
+  }
 }
 
 function esc(s) { return String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])); }

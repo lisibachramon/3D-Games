@@ -34,8 +34,8 @@ export class Net {
     this.ws.onerror = () => this.ws.close();
   }
 
-  join(name, color) {
-    this._pendingJoin = { t: 'join', name, color };
+  join(name, color, room) {
+    this._pendingJoin = { t: 'join', name, color, room };
     if (this.connected) this.send(this._pendingJoin);
   }
 

@@ -36,6 +36,70 @@ for (const c of COLORS) {
 nameInput.value = localStorage.getItem('pulsar_name') || '';
 nameInput.focus();
 
+// ---- private rooms (invite links) ----
+// ?room=ABC12 puts you in a private arena with whoever has the link. The
+// lobby can mint a code, copy the invite, or drop back to the public arena.
+const roomInfo = document.getElementById('roomInfo');
+const roomCreate = document.getElementById('roomCreate');
+const roomCopy = document.getElementById('roomCopy');
+const roomLeave = document.getElementById('roomLeave');
+
+function currentRoom() {
+  const r = (new URLSearchParams(location.search).get('room') || '')
+    .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  return r.length >= 4 ? r : null;
+}
+
+function setRoomUrl(code) {
+  const url = new URL(location.href);
+  if (code) url.searchParams.set('room', code); else url.searchParams.delete('room');
+  history.replaceState(null, '', url);
+  renderRoom();
+}
+
+function inviteUrl() {
+  return location.origin + location.pathname + '?room=' + currentRoom();
+}
+
+async function copyInvite(btn) {
+  try { await navigator.clipboard.writeText(inviteUrl()); }
+  catch { prompt('Copy this invite link:', inviteUrl()); return; }
+  const old = btn.textContent;
+  btn.textContent = '✓ COPIED!';
+  setTimeout(() => { btn.textContent = old; }, 1400);
+}
+
+function renderRoom() {
+  const room = currentRoom();
+  roomCreate.classList.toggle('hidden', !!room);
+  roomCopy.classList.toggle('hidden', !room);
+  roomLeave.classList.toggle('hidden', !room);
+  roomInfo.innerHTML = room
+    ? `PRIVATE ARENA · CODE <b>${room}</b> — send the link, friends drop straight in`
+    : '';
+}
+
+roomCreate.onclick = () => {
+  // Unambiguous alphabet (no 0/O/1/I/L).
+  const AB = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += AB[Math.floor(Math.random() * AB.length)];
+  setRoomUrl(code);
+  copyInvite(roomCopy);
+};
+roomCopy.onclick = () => copyInvite(roomCopy);
+roomLeave.onclick = () => setRoomUrl(null);
+renderRoom();
+
+// Social proof: live player count in the lobby.
+fetch('/health').then((r) => r.json()).then((h) => {
+  if (h && h.players > 0) {
+    const n = h.players;
+    roomInfo.insertAdjacentHTML('beforebegin',
+      `<p class="live-count">🟢 ${n} ${n === 1 ? 'player' : 'players'} in the arena right now</p>`);
+  }
+}).catch(() => {});
+
 let started = false;
 function launch() {
   if (started) return;
@@ -45,7 +109,7 @@ function launch() {
   lobby.classList.add('hidden');
   try {
     const game = new Game(canvas);
-    game.start(name, chosen);
+    game.start(name, chosen, currentRoom());
   } catch (err) {
     console.error(err);
     document.body.insertAdjacentHTML('beforeend',
