@@ -1,0 +1,98 @@
+name: Release Desktop
+
+# Builds the Electron desktop shells (desktop/) for both games on mac + win,
+# smoke-tests the unpacked binaries, uploads installers as artifacts, and on
+# tag pushes attaches everything to a GitHub Release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: desktop
+
+jobs:
+  build:
+    name: ${{ matrix.game }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        game: [flotsam, pulsar]
+    runs-on: ${{ matrix.os }}
+    env:
+      # No code signing yet (see desktop/STEAM.md) — stop electron-builder
+      # from discovering keychain identities on the mac runners.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/electron
+            .cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('desktop/package-lock.json') }}
+
+      - name: Install desktop dependencies
+        run: npm ci
+
+      - name: Build installers
+        run: node scripts/build.js ${{ matrix.game }}
+
+      # electron-builder leaves the unpacked app next to the installers —
+      # run it with --smoke (boots the bundled server, expects HTTP 200 on /).
+      - name: Smoke test unpacked build (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          PRODUCT=$(echo "${{ matrix.game }}" | tr '[:lower:]' '[:upper:]')
+          APP=$(ls -d "dist/${{ matrix.game }}"/mac*/"$PRODUCT.app" | head -n 1)
+          echo "smoking $APP"
+          "$APP/Contents/MacOS/$PRODUCT" --smoke
+
+      - name: Smoke test unpacked build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $product = "${{ matrix.game }}".ToUpper()
+          $exe = "dist/${{ matrix.game }}/win-unpacked/$product.exe"
+          Write-Host "smoking $exe"
+          $p = Start-Process -FilePath $exe -ArgumentList '--smoke' -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput smoke-out.log -RedirectStandardError smoke-err.log
+          Get-Content smoke-out.log -ErrorAction SilentlyContinue
+          Get-Content smoke-err.log -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "smoke failed (exit $($p.ExitCode))"; exit 1 }
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.game }}-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            desktop/dist/${{ matrix.game }}/*.dmg
+            desktop/dist/${{ matrix.game }}/*.zip
+            desktop/dist/${{ matrix.game }}/*.exe
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/dist/${{ matrix.game }}/*.dmg
+            desktop/dist/${{ matrix.game }}/*.zip
+            desktop/dist/${{ matrix.game }}/*.exe

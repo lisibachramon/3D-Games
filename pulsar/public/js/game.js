@@ -100,7 +100,7 @@ export class Game {
   }
 
   _wireNet() {
-    this.net.on('welcome', (m) => { this.selfId = m.id; });
+    this.net.on('welcome', (m) => { this.selfId = m.id; this.scene.selfId = m.id; });
     this.net.on('state', (m) => {
       this.latest = m;
       this.snapshots.push({ time: performance.now() / 1000, state: m });
@@ -156,11 +156,11 @@ export class Game {
     const pos = (id) => { const p = this.names.get(id); return p ? p : null; };
     switch (m.kind) {
       case 'go': this.audio.go(); this.hud.banner('GO!', '', 900); break;
-      case 'dash': { const p = pos(m.id); this.audio.dash(p && this.audio.panX(p.x)); if (p) this.scene.ripple(p.x, p.z, p.c, 6); if (m.id === this.selfId) this.stats.record('dash'); break; }
+      case 'dash': { const p = pos(m.id); this.audio.dash(p && this.audio.panX(p.x)); if (p) this.scene.ripple(p.x, p.z, p.c, 4); this.scene.dashFx(m.id); if (m.id === this.selfId) this.stats.record('dash'); break; }
       case 'hit': {
         const p = pos(m.id);
         this.audio.hit(p && this.audio.panX(p.x));
-        if (p) { this.scene.burst(p.x, p.z, p.c, 16); this.scene.ripple(p.x, p.z, p.c, 9); }
+        if (p) { this.scene.burst(p.x, p.z, p.c, 8); this.scene.ripple(p.x, p.z, p.c, 6); }
         this.scene.hitPop(m.id);
         this.scene.shake(0.45);
         if (m.id === this.selfId) this.scene.punch(1.2);
@@ -177,7 +177,8 @@ export class Game {
       }
       case 'blast': {
         this.audio.blast(this.audio.panX(m.x));
-        this.scene.ripple(m.x, m.z, '#ffffff', 24);
+        const blaster = this.names.get(m.id);
+        this.scene.ripple(m.x, m.z, blaster ? blaster.c : '#ffffff', 11);
         this.scene.shake(m.id === this.selfId ? 1.0 : 0.5);
         if (m.id === this.selfId) { this.scene.punch(2); this.stats.record('blast'); }
         break;
@@ -199,7 +200,7 @@ export class Game {
       case 'ko': {
         const v = pos(m.id);
         this.audio.ko(v && this.audio.panX(v.x));
-        if (v) { this.scene.burst(v.x, v.z, v.c, 46); this.scene.ripple(v.x, v.z, v.c, 18); this.scene.popup(v.x, v.z, 'KO', '#ff2bd6'); }
+        if (v) { this.scene.burst(v.x, v.z, v.c, 46); this.scene.ripple(v.x, v.z, v.c, 10); this.scene.beam(v.x, v.z, v.c, 1.6); this.scene.popup(v.x, v.z, 'KO', '#ff2bd6'); }
         this.scene.shake(1.3);
         this.scene.punch(3.2);
         this.hud.flash(m.by === this.selfId ? '#7cff00' : '#ff2bd6');

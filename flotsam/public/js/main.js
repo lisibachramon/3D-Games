@@ -42,6 +42,17 @@ function addPing(x, z, color) {
 
 let dayTime = GAME.DAY_LENGTH * 0.25, lastState = null, weatherLight = 1;
 
+// Debug-only, presentation-only time-of-day override (?tod=night / ?tod=0.42).
+// Server time stays authoritative for gameplay; this only pins the sky/lighting.
+const TOD_OVERRIDE = (() => {
+  const v = new URLSearchParams(location.search).get('tod');
+  if (v == null) return null;
+  const named = { midnight: 0.0, night: 0.02, sunrise: 0.28, morning: 0.36, day: 0.5, noon: 0.5, sunset: 0.72, dusk: 0.75 };
+  if (v in named) return named[v];
+  const f = parseFloat(v);
+  return Number.isFinite(f) ? ((f % 1) + 1) % 1 : null;
+})();
+
 const nameInput = document.getElementById('nameInput');
 nameInput.value = 'Castaway' + Math.floor(Math.random() * 99);
 function play() {
@@ -105,6 +116,9 @@ net.on('event', (m) => {
 });
 net.on('close', () => hud.toast('⚠ Disconnected from server.'));
 
+// debug helper for visual tooling: aim the camera (presentation only)
+window.__look = (yaw, pitch) => { ctrl.yaw = yaw; ctrl.pitch = pitch; };
+
 // ---- loop ----
 const clock = new THREE.Clock();
 let gameTime = 0, fpsT = 0, fpsN = 0;
@@ -112,7 +126,8 @@ function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, clock.getDelta());
   gameTime += dt; dayTime = (dayTime + dt) % GAME.DAY_LENGTH;
-  const tf = dayTime / GAME.DAY_LENGTH;
+  const tf = TOD_OVERRIDE ?? (dayTime / GAME.DAY_LENGTH);
+  stage.weatherLight = weatherLight;
   let day = stage.updateSky(tf);
   // weather dimming
   stage.sun.intensity *= weatherLight; stage.hemi.intensity *= (0.6 + weatherLight * 0.4);
@@ -130,7 +145,7 @@ function loop() {
   // underwater
   const underwater = stage.camera.position.y < -0.3;
   const uw = document.getElementById('underwater');
-  if (underwater) { uw.classList.add('show'); const mask = hud.has('mask'); stage.scene.fog.color.setHex(mask ? 0x1d6fa0 : 0x0a3550); }
+  if (underwater) { uw.classList.add('show'); const mask = hud.has('mask'); stage.scene.fog.color.setHex(mask ? 0x1d6fa0 : 0x0a3550); stage.scene.fog.density = mask ? 0.028 : 0.045; }
   else uw.classList.remove('show');
 
   // screen shake
