@@ -4,6 +4,7 @@ import puppeteer from 'puppeteer';
 
 const PORT = process.env.PORT || 8092;
 const URL = `http://localhost:${PORT}`;
+const SCREENSHOT_PATH = process.env.SCREENSHOT_PATH || '/home/user/flotsam/screenshot.png';
 const errors = [];
 
 const browser = await puppeteer.launch({
@@ -77,7 +78,7 @@ try {
   await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB' })));
   // let it render a few seconds, then verify the rendered frame is non-blank
   await new Promise(r => setTimeout(r, 2500));
-  const buf = await page.screenshot({ path: '/home/user/flotsam/screenshot.png' });
+  const buf = await page.screenshot({ path: SCREENSHOT_PATH });
   // a blank frame compresses to near-uniform bytes; a real scene has high variety
   const distinct = new Set();
   for (let i = 0; i < buf.length; i += 101) distinct.add(buf[i]);
