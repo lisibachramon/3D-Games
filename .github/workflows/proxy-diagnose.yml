@@ -28,7 +28,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" '
             set -x
             docker ps --format "{{.Names}}  {{.Image}}  {{.Ports}}"
-            PROXY=$(docker ps --format "{{.Names}} {{.Image}}" | grep -Ei "nginx-proxy|jwilder|nginxproxy" | head -1 | cut -d" " -f1)
+            PROXY=$(docker ps --format "{{.Names}} {{.Image}}" | grep -Ei "jwilder/nginx-proxy|nginxproxy/nginx-proxy" | grep -vi companion | head -1 | cut -d" " -f1)
             echo "proxy container: $PROXY"
             docker exec "$PROXY" nginx -v 2>&1 || true
             echo "--- upgrade directives in active config ---"
