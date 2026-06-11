@@ -31,10 +31,17 @@ jobs:
             PROXY=$(docker ps --format "{{.Names}} {{.Image}}" | grep -Ei "jwilder/nginx-proxy|nginxproxy/nginx-proxy" | grep -vi companion | head -1 | cut -d" " -f1)
             echo "proxy container: $PROXY"
             docker exec "$PROXY" nginx -v 2>&1 || true
-            echo "--- upgrade directives in active config ---"
-            docker exec "$PROXY" sh -c "nginx -T 2>/dev/null | grep -n \"http_upgrade\|proxy_connection\|Connection \" | head -20" || true
-            echo "--- pulsar vhost block ---"
-            docker exec "$PROXY" sh -c "nginx -T 2>/dev/null | grep -A 30 \"server_name pulsar\" | head -60" || true
+            echo "--- http-level header/keepalive section (around the maps) ---"
+            docker exec "$PROXY" sh -c "nginx -T 2>/dev/null | sed -n \"150,230p\"" || true
+            echo "--- full pulsar 443 server block ---"
+            docker exec "$PROXY" sh -c "nginx -T 2>/dev/null | awk \"/server_name pulsar/{f++} f==2{print} f==2&&/^}/{exit}\"" || true
+            echo "--- vhost.d custom configs ---"
+            docker exec "$PROXY" sh -c "ls -la /etc/nginx/vhost.d/ 2>/dev/null; for f in /etc/nginx/vhost.d/*; do echo \"== \$f\"; cat \"\$f\"; done 2>/dev/null | head -60" || true
+            echo "--- WS handshake direct to pulsar container (expect 101) ---"
+            PIP=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}" 3d-games-pulsar-1 | awk "{print \$1}")
+            curl -s -i -m 5 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" "http://$PIP:8080/" | head -3 || true
+            echo "--- WS handshake via proxy from inside (expect 101) ---"
+            curl -s -i -m 5 --http1.1 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" -H "Host: pulsar.lisibach.xyz" "http://127.0.0.1:80/" | head -3 || true
             echo "--- proxy_default network members ---"
             docker network inspect proxy_default --format "{{range .Containers}}{{.Name}} {{end}}" || true
           '
