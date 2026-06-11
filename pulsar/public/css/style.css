@@ -176,3 +176,17 @@ body.cb #game { filter: saturate(1.45) contrast(1.08) brightness(1.05); }
   mix-blend-mode: screen; transition: opacity .07s ease-out;
 }
 #flash.on { opacity: .55; transition: opacity 0s; }
+
+/* ---- private rooms / invite links ---- */
+.room-box { margin-top: 14px; }
+.room-info { font-size: 12px; letter-spacing: 1px; color: #9fb3d9; min-height: 1em; margin-bottom: 8px; }
+.room-info b { color: #00f0ff; letter-spacing: 3px; }
+.room-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.btn-room {
+  background: rgba(0, 240, 255, 0.07); color: #8fe8ff;
+  border: 1px solid rgba(0, 240, 255, 0.35); border-radius: 8px;
+  padding: 8px 14px; font: inherit; font-size: 12px; letter-spacing: 2px;
+  cursor: pointer; transition: background .15s, box-shadow .15s;
+}
+.btn-room:hover { background: rgba(0, 240, 255, 0.16); box-shadow: 0 0 14px rgba(0, 240, 255, 0.35); }
+.live-count { font-size: 12.5px; letter-spacing: 1px; color: #7cff9b; margin-bottom: 8px; }

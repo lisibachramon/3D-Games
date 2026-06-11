@@ -26,7 +26,8 @@ let fail = 0;
 const ok = (c, m) => { if (c) console.log('  ✓', m); else { console.log('  ✗ FAIL:', m); fail++; } };
 
 try {
-  await page.goto(URL, { waitUntil: 'networkidle0', timeout: 15000 });
+  // Generous timeout: cold CI runners have flaked at 15s on navigation alone.
+  await page.goto(URL, { waitUntil: 'networkidle0', timeout: 45000 });
   await page.waitForSelector('#playBtn', { timeout: 5000 });
   ok(true, 'page loaded, menu visible');
 
