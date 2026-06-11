@@ -1,0 +1,66 @@
+name: Proxy fix WebSockets
+
+# One-shot, idempotent repair for the home-server reverse proxy. The server
+# mounts a custom /etc/nginx/proxy.conf into jwilder/nginx-proxy, which
+# REPLACES the template's default header block — losing the WebSocket upgrade
+# headers (proxy_set_header Upgrade/Connection). This patches the file (with
+# backup), validates with nginx -t (restores on failure), reloads, and proves
+# the handshake returns 101 via the proxy.
+#
+# PATCH_B64 decodes to:
+#   # --- WebSocket upgrade support (restores nginx-proxy template defaults
+#   #     that a custom proxy.conf otherwise replaces) ---
+#   proxy_http_version 1.1;
+#   proxy_set_header Upgrade $http_upgrade;
+#   proxy_set_header Connection $proxy_connection;
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    name: Patch proxy.conf for WS upgrades
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Patch over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          PORT="${DEPLOY_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -e
+            PATCH_B64="CiMgLS0tIFdlYlNvY2tldCB1cGdyYWRlIHN1cHBvcnQgKHJlc3RvcmVzIG5naW54LXByb3h5IHRlbXBsYXRlIGRlZmF1bHRzCiMgICAgIHRoYXQgYSBjdXN0b20gcHJveHkuY29uZiBvdGhlcndpc2UgcmVwbGFjZXMpIC0tLQpwcm94eV9odHRwX3ZlcnNpb24gMS4xOwpwcm94eV9zZXRfaGVhZGVyIFVwZ3JhZGUgJGh0dHBfdXBncmFkZTsKcHJveHlfc2V0X2hlYWRlciBDb25uZWN0aW9uICRwcm94eV9jb25uZWN0aW9uOwo="
+            PROXY=$(docker ps --format "{{.Names}} {{.Image}}" | grep -Ei "jwilder/nginx-proxy|nginxproxy/nginx-proxy" | grep -vi companion | head -1 | cut -d" " -f1)
+            echo "proxy container: $PROXY"
+            echo "--- mount info for proxy.conf ---"
+            docker inspect "$PROXY" --format "{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}" | grep -i proxy.conf || echo "(not a bind mount — patch lives only in the container layer)"
+            echo "--- current proxy.conf ---"
+            docker exec "$PROXY" cat /etc/nginx/proxy.conf || { echo "no custom proxy.conf — different root cause, aborting"; exit 1; }
+            if docker exec "$PROXY" grep -q "proxy_set_header Upgrade" /etc/nginx/proxy.conf; then
+              echo "ALREADY PATCHED — nothing to do"
+            else
+              docker exec "$PROXY" cp /etc/nginx/proxy.conf /etc/nginx/proxy.conf.bak
+              echo "$PATCH_B64" | base64 -d | docker exec -i "$PROXY" sh -c "cat >> /etc/nginx/proxy.conf"
+              if docker exec "$PROXY" nginx -t; then
+                docker exec "$PROXY" nginx -s reload
+                echo "PATCHED + RELOADED"
+              else
+                docker exec "$PROXY" cp /etc/nginx/proxy.conf.bak /etc/nginx/proxy.conf
+                echo "nginx -t FAILED — restored backup"
+                exit 1
+              fi
+            fi
+            sleep 2
+            echo "--- WS handshake via proxy (expect HTTP/1.1 101) ---"
+            curl -s -i -m 6 --http1.1 -k --resolve "pulsar.lisibach.xyz:443:127.0.0.1" \
+              -H "Connection: Upgrade" -H "Upgrade: websocket" \
+              -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
+              "https://pulsar.lisibach.xyz/" | head -3
+          '
