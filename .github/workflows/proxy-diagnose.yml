@@ -1,0 +1,40 @@
+name: Proxy diagnose
+
+# Manual diagnostics for the home-server reverse proxy (WebSocket upgrades are
+# currently not reaching the game containers). Read-only: prints container
+# list, the generated nginx config for the game vhosts, and the WS-upgrade
+# directives. Same DEPLOY_* secrets as the deploy job.
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    name: Inspect reverse proxy config
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Diagnose over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          PORT="${DEPLOY_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -x
+            docker ps --format "{{.Names}}  {{.Image}}  {{.Ports}}"
+            PROXY=$(docker ps --format "{{.Names}} {{.Image}}" | grep -Ei "nginx-proxy|jwilder|nginxproxy" | head -1 | cut -d" " -f1)
+            echo "proxy container: $PROXY"
+            docker exec "$PROXY" nginx -v 2>&1 || true
+            echo "--- upgrade directives in active config ---"
+            docker exec "$PROXY" sh -c "nginx -T 2>/dev/null | grep -n \"http_upgrade\|proxy_connection\|Connection \" | head -20" || true
+            echo "--- pulsar vhost block ---"
+            docker exec "$PROXY" sh -c "nginx -T 2>/dev/null | grep -A 30 \"server_name pulsar\" | head -60" || true
+            echo "--- proxy_default network members ---"
+            docker network inspect proxy_default --format "{{range .Containers}}{{.Name}} {{end}}" || true
+          '
