@@ -1,0 +1,34 @@
+name: Server maintenance
+
+# Manual housekeeping for the home server (same DEPLOY_* secrets as the deploy
+# job). Frees disk: prunes unused Docker images/builder cache + old journals.
+# NOTE: deliberately does NOT prune volumes — flotsam-saves must survive.
+on:
+  workflow_dispatch:
+
+jobs:
+  clean:
+    name: Clean home server disk
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clean over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_HOST" ]; then echo "::error::DEPLOY_HOST not set"; exit 1; fi
+          PORT="${DEPLOY_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -x; \
+             df -h /; \
+             docker system prune -af || true; \
+             docker builder prune -af || true; \
+             sudo journalctl --vacuum-size=200M 2>/dev/null || journalctl --vacuum-size=200M 2>/dev/null || true; \
+             df -h /"
